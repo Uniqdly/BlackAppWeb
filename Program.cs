@@ -21,7 +21,7 @@ builder.Services.AddHttpClient("moex", client =>
 builder.Services.AddSingleton<ICacheService,    CacheService>();
 builder.Services.AddScoped<IMoexApiService,     MoexApiService>();
 builder.Services.AddScoped<IOptionSearchService, OptionSearchService>();
-
+builder.Services.AddScoped<IScreenerService, ScreenerService>();
 // Вычислительный движок — не зависит от UI и DI-контейнера
 // Регистрируем как Transient чтобы движок был stateless
 builder.Services.AddTransient<FractionalBlackScholesEngine>();

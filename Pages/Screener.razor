@@ -1,213 +1,231 @@
 @page "/screener"
 
-@using FractionalBlackScholes.Models
-@using FractionalBlackScholes.Services
+<PageTitle>FBS — Скринер опционов</PageTitle>
 
-@inject IScreenerService ScreenerService
+<div class="page-wrapper">
 
-<PageTitle>Топ опционов</PageTitle>
-
-<div class="container mt-4">
-
-    <h1 class="mb-4">
-        📈 Скринер опционов
-    </h1>
-
-    <div class="card mb-4">
-        <div class="card-body">
-
-            <div class="row">
-
-                <div class="col-md-3">
-                    <label class="form-label">α</label>
-                    <input class="form-control"
-                           type="number"
-                           step="0.01"
-                           min="0.1"
-                           max="1"
-                           @bind="_alpha" />
+    <!-- Шапка -->
+    <header class="app-header">
+        <div class="header-inner">
+            <div class="logo-block">
+                <span class="logo-icon">📈</span>
+                <div>
+                    <h1 class="app-title">Скринер опционов</h1>
+                    <p class="app-subtitle">
+                        Поиск недооценённых и переоценённых опционов
+                    </p>
                 </div>
-
-                <div class="col-md-3">
-                    <label class="form-label">Мин. отклонение (%)</label>
-                    <input class="form-control"
-                           type="number"
-                           @bind="_minDiff" />
-                </div>
-
-                <div class="col-md-3">
-                    <label class="form-label">Количество</label>
-                    <input class="form-control"
-                           type="number"
-                           @bind="_topN" />
-                </div>
-
             </div>
 
-            <button class="btn btn-primary mt-3"
-                    @onclick="RunScreener"
-                    disabled="@_loading">
+            <div class="header-stats">
+                <div class="stat-chip">
+                    <span class="stat-label">Недооценённых</span>
+                    <span class="stat-value">@Undervalued.Count</span>
+                </div>
 
-                @if (_loading)
-                {
-                    <span>Сканирование...</span>
-                }
-                else
-                {
-                    <span>Запустить скрининг</span>
-                }
-            </button>
-
+                <div class="stat-chip">
+                    <span class="stat-label">Переоценённых</span>
+                    <span class="stat-value">@Overvalued.Count</span>
+                </div>
+            </div>
         </div>
-    </div>
+    </header>
 
-    @if (_report != null)
-    {
-        <div class="row">
+    <main class="main-grid">
 
-            <!-- Недооценённые -->
+        <!-- Левая колонка -->
+        <div class="col-left">
 
-            <div class="col-lg-6">
+            <section class="card">
+                <div class="card-header">
+                    <span class="card-icon">🟢</span>
+                    <h2 class="card-title">Недооценённые опционы</h2>
+                </div>
 
-                <div class="card border-success mb-4">
+                <div class="card-body">
 
-                    <div class="card-header">
-                        🟢 Недооценённые опционы
-                    </div>
+                    @foreach (var option in Undervalued)
+                    {
+                        <div class="result-block diff-under mb-3">
 
-                    <div class="card-body">
-
-                        @foreach (var item in _report.Undervalued)
-                        {
-                            <div class="border rounded p-3 mb-3">
-
-                                <h5>
-                                    @item.Option.Ticker
-                                </h5>
-
+                            <div class="d-flex justify-content-between align-items-center">
                                 <div>
-                                    Тип:
-                                    @(item.Option.OptionType == "C" ? "CALL" : "PUT")
+                                    <strong>@option.Ticker</strong>
+                                    <span class="badge @(option.OptionType == "CALL" ? "badge-call" : "badge-put") ms-2">
+                                        @option.OptionType
+                                    </span>
                                 </div>
 
-                                <div>
-                                    Рыночная цена:
-                                    @item.MarketPrice.ToString("N2")
+                                <div class="fair-price">
+                                    @option.DifferencePercent.ToString("F1")%
+                                </div>
+                            </div>
+
+                            <hr />
+
+                            <div class="params-grid">
+
+                                <div class="param-item">
+                                    <span class="param-label">Рыночная цена</span>
+                                    <span class="param-value mono">
+                                        @option.MarketPrice.ToString("N2")
+                                    </span>
                                 </div>
 
-                                <div>
-                                    Справедливая цена:
-                                    @item.FairPrice.ToString("N2")
+                                <div class="param-item">
+                                    <span class="param-label">Справедливая цена</span>
+                                    <span class="param-value mono">
+                                        @option.FairPrice.ToString("N2")
+                                    </span>
                                 </div>
-
-                                <div class="text-success fw-bold">
-                                    +@item.DiffPercent.ToString("F1")%
-                                </div>
-
-                                <div class="small text-muted">
-                                    @item.Rationale
-                                </div>
-
-                                <button class="btn btn-outline-primary btn-sm mt-2">
-                                    Подробнее
-                                </button>
 
                             </div>
-                        }
 
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- Переоценённые -->
-
-            <div class="col-lg-6">
-
-                <div class="card border-danger">
-
-                    <div class="card-header">
-                        🔴 Переоценённые опционы
-                    </div>
-
-                    <div class="card-body">
-
-                        @foreach (var item in _report.Overvalued)
-                        {
-                            <div class="border rounded p-3 mb-3">
-
-                                <h5>
-                                    @item.Option.Ticker
-                                </h5>
-
-                                <div>
-                                    Тип:
-                                    @(item.Option.OptionType == "C" ? "CALL" : "PUT")
-                                </div>
-
-                                <div>
-                                    Рыночная цена:
-                                    @item.MarketPrice.ToString("N2")
-                                </div>
-
-                                <div>
-                                    Справедливая цена:
-                                    @item.FairPrice.ToString("N2")
-                                </div>
-
-                                <div class="text-danger fw-bold">
-                                    @item.DiffPercent.ToString("F1")%
-                                </div>
-
-                                <div class="small text-muted">
-                                    @item.Rationale
-                                </div>
-
-                                <button class="btn btn-outline-primary btn-sm mt-2">
-                                    Подробнее
-                                </button>
-
+                            <div class="result-meta mt-2">
+                                @option.Reason
                             </div>
-                        }
 
-                    </div>
+                            <button class="btn btn-outline btn-sm mt-3">
+                                Подробнее
+                            </button>
+
+                        </div>
+                    }
+
                 </div>
-
-            </div>
+            </section>
 
         </div>
-    }
+
+        <!-- Правая колонка -->
+        <div class="col-right">
+
+            <section class="card">
+                <div class="card-header">
+                    <span class="card-icon">🔴</span>
+                    <h2 class="card-title">Переоценённые опционы</h2>
+                </div>
+
+                <div class="card-body">
+
+                    @foreach (var option in Overvalued)
+                    {
+                        <div class="result-block diff-over mb-3">
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>@option.Ticker</strong>
+                                    <span class="badge @(option.OptionType == "CALL" ? "badge-call" : "badge-put") ms-2">
+                                        @option.OptionType
+                                    </span>
+                                </div>
+
+                                <div class="fair-price">
+                                    +@option.DifferencePercent.ToString("F1")%
+                                </div>
+                            </div>
+
+                            <hr />
+
+                            <div class="params-grid">
+
+                                <div class="param-item">
+                                    <span class="param-label">Рыночная цена</span>
+                                    <span class="param-value mono">
+                                        @option.MarketPrice.ToString("N2")
+                                    </span>
+                                </div>
+
+                                <div class="param-item">
+                                    <span class="param-label">Справедливая цена</span>
+                                    <span class="param-value mono">
+                                        @option.FairPrice.ToString("N2")
+                                    </span>
+                                </div>
+
+                            </div>
+
+                            <div class="result-meta mt-2">
+                                @option.Reason
+                            </div>
+
+                            <button class="btn btn-outline btn-sm mt-3">
+                                Подробнее
+                            </button>
+
+                        </div>
+                    }
+
+                </div>
+            </section>
+
+        </div>
+
+    </main>
+
+    <footer class="app-footer">
+        <div class="footer-inner">
+            <span>Fractional Black–Scholes</span>
+            <span>Скринер рыночных аномалий</span>
+            <span>MOEX ISS API</span>
+        </div>
+    </footer>
+
 </div>
 
 @code {
 
-    private bool _loading;
-
-    private double _alpha = 0.85;
-
-    private double _minDiff = 5;
-
-    private int _topN = 10;
-
-    private ScreenerReport? _report;
-
-    private async Task RunScreener()
+    private List<ScreenerOption> Undervalued = new()
     {
-        _loading = true;
+        new()
+        {
+            Ticker = "RI65000BC5",
+            OptionType = "CALL",
+            MarketPrice = 1250,
+            FairPrice = 1530,
+            DifferencePercent = -18.3,
+            Reason = "Цена значительно ниже расчётной стоимости."
+        },
+        new()
+        {
+            Ticker = "Si95000BC5",
+            OptionType = "CALL",
+            MarketPrice = 820,
+            FairPrice = 1010,
+            DifferencePercent = -18.8,
+            Reason = "Возможная недооценка по дробной модели."
+        }
+    };
 
-        try
+    private List<ScreenerOption> Overvalued = new()
+    {
+        new()
         {
-            _report = await ScreenerService.RunAsync(
-                new ScreenerSettings
-                {
-                    Alpha = _alpha,
-                    MinDiffPercent = _minDiff,
-                    TopN = _topN
-                });
-        }
-        finally
+            Ticker = "RI60000BC5",
+            OptionType = "PUT",
+            MarketPrice = 1900,
+            FairPrice = 1400,
+            DifferencePercent = 35.7,
+            Reason = "Рыночная цена заметно выше модели."
+        },
+        new()
         {
-            _loading = false;
+            Ticker = "GAZP180P",
+            OptionType = "PUT",
+            MarketPrice = 230,
+            FairPrice = 170,
+            DifferencePercent = 35.2,
+            Reason = "Возможная переоценка опциона."
         }
+    };
+
+    public class ScreenerOption
+    {
+        public string Ticker { get; set; } = "";
+        public string OptionType { get; set; } = "";
+        public double MarketPrice { get; set; }
+        public double FairPrice { get; set; }
+        public double DifferencePercent { get; set; }
+        public string Reason { get; set; } = "";
     }
 }
