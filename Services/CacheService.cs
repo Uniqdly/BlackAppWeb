@@ -1,125 +1,113 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
-using BlackScholesApp.Models;
-using Newtonsoft.Json;
-using ILogger = Serilog.ILogger;
+using System.Linq;
+using FractionalBlackScholes.Models;
+using Microsoft.Extensions.Logging;
 
-namespace BlackScholesApp.Services;
-
-public interface ICacheService
+namespace FractionalBlackScholes.Services
 {
-    Task<CachedOption?> GetAsync(string ticker);
-    Task SetAsync(string ticker, OptionData data);
-    Task RemoveAsync(string ticker);
-    Task ClearAllAsync();
-    bool IsFresh(CachedOption cached);
-}
-
-public class CacheService : ICacheService
-{
-    private readonly ILogger _log;
-    private readonly string _cacheFilePath;
-    private readonly TimeSpan _maxAge = TimeSpan.FromHours(24);
-    private CacheStore _store = new();
-    private readonly SemaphoreSlim _lock = new(1, 1);
-
-    public CacheService(ILogger log)
+    /// <summary>
+    /// Интерфейс локального кэша данных об опционах.
+    /// </summary>
+    public interface ICacheService
     {
-        _log = log;
-        var cacheDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Cache");
-        Directory.CreateDirectory(cacheDir);
-        _cacheFilePath = Path.Combine(cacheDir, "options_cache.json");
-        LoadFromDisk();
+        /// <summary>Получить данные из кэша по тикеру.</summary>
+        OptionData? Get(string ticker);
+
+        /// <summary>Сохранить данные в кэш.</summary>
+        void Set(string ticker, OptionData data, TimeSpan? ttl = null);
+
+        /// <summary>Удалить запись из кэша.</summary>
+        void Remove(string ticker);
+
+        /// <summary>Очистить весь кэш.</summary>
+        void Clear();
+
+        /// <summary>Количество записей в кэше.</summary>
+        int Count { get; }
+
+        /// <summary>Список всех ключей кэша.</summary>
+        IReadOnlyList<string> Keys { get; }
     }
 
-    private void LoadFromDisk()
+    /// <summary>
+    /// Потокобезопасный in-memory кэш на основе ConcurrentDictionary.
+    /// Срок жизни записи — 24 часа по умолчанию.
+    /// </summary>
+    public class CacheService : ICacheService
     {
-        try
-        {
-            if (File.Exists(_cacheFilePath))
-            {
-                var json = File.ReadAllText(_cacheFilePath);
-                _store = JsonConvert.DeserializeObject<CacheStore>(json) ?? new CacheStore();
-                _log.Information("Cache loaded: {Count} entries", _store.Entries.Count);
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.Warning(ex, "Failed to load cache from disk, starting fresh");
-            _store = new CacheStore();
-        }
-    }
+        private readonly ConcurrentDictionary<string, CachedOption> _cache = new();
+        private readonly ILogger<CacheService> _logger;
 
-    public async Task<CachedOption?> GetAsync(string ticker)
-    {
-        ticker = ticker.Trim().ToUpperInvariant();
-        await _lock.WaitAsync();
-        try
+        public CacheService(ILogger<CacheService> logger)
         {
-            if (_store.Entries.TryGetValue(ticker, out var cached))
+            _logger = logger;
+        }
+
+        /// <inheritdoc/>
+        public OptionData? Get(string ticker)
+        {
+            if (string.IsNullOrWhiteSpace(ticker)) return null;
+
+            string key = ticker.ToUpperInvariant();
+
+            if (_cache.TryGetValue(key, out var cached))
             {
-                _log.Information("Cache hit for {Ticker}, cached at {CachedAt}", ticker, cached.CachedAt);
-                return cached;
+                if (cached.IsValid)
+                {
+                    _logger.LogDebug("Cache HIT for {Ticker}", key);
+                    return cached.Data;
+                }
+
+                // Запись устарела — удаляем
+                _logger.LogDebug("Cache EXPIRED for {Ticker}", key);
+                _cache.TryRemove(key, out _);
             }
-            _log.Information("Cache miss for {Ticker}", ticker);
+
             return null;
         }
-        finally { _lock.Release(); }
-    }
 
-    public async Task SetAsync(string ticker, OptionData data)
-    {
-        ticker = ticker.Trim().ToUpperInvariant();
-        await _lock.WaitAsync();
-        try
+        /// <inheritdoc/>
+        public void Set(string ticker, OptionData data, TimeSpan? ttl = null)
         {
-            _store.Entries[ticker] = new CachedOption { Data = data, CachedAt = DateTime.Now };
-            await SaveToDiskAsync();
-            _log.Information("Cached option data for {Ticker}", ticker);
-        }
-        finally { _lock.Release(); }
-    }
+            if (string.IsNullOrWhiteSpace(ticker)) return;
 
-    public async Task RemoveAsync(string ticker)
-    {
-        ticker = ticker.Trim().ToUpperInvariant();
-        await _lock.WaitAsync();
-        try
-        {
-            _store.Entries.Remove(ticker);
-            await SaveToDiskAsync();
-            _log.Information("Removed cache entry for {Ticker}", ticker);
-        }
-        finally { _lock.Release(); }
-    }
+            string key = ticker.ToUpperInvariant();
+            var entry = new CachedOption
+            {
+                Key     = key,
+                Data    = data,
+                CachedAt = DateTime.Now,
+                Ttl     = ttl ?? TimeSpan.FromHours(24)
+            };
 
-    public async Task ClearAllAsync()
-    {
-        await _lock.WaitAsync();
-        try
-        {
-            _store.Entries.Clear();
-            await SaveToDiskAsync();
-            _log.Information("Cache cleared");
+            _cache[key] = entry;
+            _logger.LogDebug("Cache SET for {Ticker}, TTL={Ttl}", key, entry.Ttl);
         }
-        finally { _lock.Release(); }
-    }
 
-    public bool IsFresh(CachedOption cached) => !cached.IsExpired(_maxAge);
+        /// <inheritdoc/>
+        public void Remove(string ticker)
+        {
+            if (string.IsNullOrWhiteSpace(ticker)) return;
+            _cache.TryRemove(ticker.ToUpperInvariant(), out _);
+        }
 
-    private async Task SaveToDiskAsync()
-    {
-        try
+        /// <inheritdoc/>
+        public void Clear()
         {
-            var json = JsonConvert.SerializeObject(_store, Formatting.Indented);
-            await File.WriteAllTextAsync(_cacheFilePath, json);
+            _cache.Clear();
+            _logger.LogInformation("Cache cleared");
         }
-        catch (Exception ex)
-        {
-            _log.Warning(ex, "Failed to save cache to disk");
-        }
+
+        /// <inheritdoc/>
+        public int Count => _cache.Count(kv => kv.Value.IsValid);
+
+        /// <inheritdoc/>
+        public IReadOnlyList<string> Keys =>
+            _cache.Where(kv => kv.Value.IsValid)
+                  .Select(kv => kv.Key)
+                  .ToList()
+                  .AsReadOnly();
     }
 }

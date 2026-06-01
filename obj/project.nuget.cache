@@ -1,12 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "BF4akf4XpJ4=",
+  "dgSpecHash": "9MwBS4bn0zg=",
   "success": true,
-  "projectFilePath": "C:\\Users\\yuryc\\MyBlazorApp\\MyBlazorApp.csproj",
-  "expectedPackageFiles": [
-    "C:\\Users\\yuryc\\.nuget\\packages\\newtonsoft.json\\13.0.4\\newtonsoft.json.13.0.4.nupkg.sha512",
-    "C:\\Users\\yuryc\\.nuget\\packages\\serilog\\4.3.1\\serilog.4.3.1.nupkg.sha512",
-    "C:\\Users\\yuryc\\.nuget\\packages\\serilog.sinks.file\\7.0.0\\serilog.sinks.file.7.0.0.nupkg.sha512"
-  ],
+  "projectFilePath": "C:\\Users\\yuryc\\Downloads\\FractionalBS_BlazorServer (3)\\FractionalBS\\FractionalBlackScholes.csproj",
+  "expectedPackageFiles": [],
   "logs": []
 }

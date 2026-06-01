@@ -1,40 +1,28 @@
 {
   "Files": [
     {
-      "Id": "C:\\Users\\yuryc\\MyBlazorApp\\obj\\Debug\\net8.0\\scopedcss\\projectbundle\\MyBlazorApp.bundle.scp.css",
-      "PackagePath": "staticwebassets\\MyBlazorApp.bundle.scp.css"
+      "Id": "C:\\Users\\yuryc\\Downloads\\FractionalBS_BlazorServer (3)\\FractionalBS\\wwwroot\\css\\app.css",
+      "PackagePath": "staticwebassets\\css\\app.css"
     },
     {
-      "Id": "C:\\Users\\yuryc\\MyBlazorApp\\wwwroot\\app.css",
-      "PackagePath": "staticwebassets\\app.css"
+      "Id": "C:\\Users\\yuryc\\Downloads\\FractionalBS_BlazorServer (3)\\FractionalBS\\wwwroot\\favicon.svg",
+      "PackagePath": "staticwebassets\\favicon.svg"
     },
     {
-      "Id": "C:\\Users\\yuryc\\MyBlazorApp\\wwwroot\\bootstrap\\bootstrap.min.css",
-      "PackagePath": "staticwebassets\\bootstrap\\bootstrap.min.css"
-    },
-    {
-      "Id": "C:\\Users\\yuryc\\MyBlazorApp\\wwwroot\\bootstrap\\bootstrap.min.css.map",
-      "PackagePath": "staticwebassets\\bootstrap\\bootstrap.min.css.map"
-    },
-    {
-      "Id": "C:\\Users\\yuryc\\MyBlazorApp\\wwwroot\\favicon.png",
-      "PackagePath": "staticwebassets\\favicon.png"
-    },
-    {
-      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.MyBlazorApp.Microsoft.AspNetCore.StaticWebAssets.props",
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.FractionalBlackScholes.Microsoft.AspNetCore.StaticWebAssets.props",
       "PackagePath": "build\\Microsoft.AspNetCore.StaticWebAssets.props"
     },
     {
-      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.build.MyBlazorApp.props",
-      "PackagePath": "build\\MyBlazorApp.props"
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.build.FractionalBlackScholes.props",
+      "PackagePath": "build\\FractionalBlackScholes.props"
     },
     {
-      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.buildMultiTargeting.MyBlazorApp.props",
-      "PackagePath": "buildMultiTargeting\\MyBlazorApp.props"
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.buildMultiTargeting.FractionalBlackScholes.props",
+      "PackagePath": "buildMultiTargeting\\FractionalBlackScholes.props"
     },
     {
-      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.buildTransitive.MyBlazorApp.props",
-      "PackagePath": "buildTransitive\\MyBlazorApp.props"
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.buildTransitive.FractionalBlackScholes.props",
+      "PackagePath": "buildTransitive\\FractionalBlackScholes.props"
     }
   ],
   "ElementsToRemove": []

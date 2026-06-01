@@ -1,0 +1,213 @@
+@page "/screener"
+
+@using FractionalBlackScholes.Models
+@using FractionalBlackScholes.Services
+
+@inject IScreenerService ScreenerService
+
+<PageTitle>Топ опционов</PageTitle>
+
+<div class="container mt-4">
+
+    <h1 class="mb-4">
+        📈 Скринер опционов
+    </h1>
+
+    <div class="card mb-4">
+        <div class="card-body">
+
+            <div class="row">
+
+                <div class="col-md-3">
+                    <label class="form-label">α</label>
+                    <input class="form-control"
+                           type="number"
+                           step="0.01"
+                           min="0.1"
+                           max="1"
+                           @bind="_alpha" />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Мин. отклонение (%)</label>
+                    <input class="form-control"
+                           type="number"
+                           @bind="_minDiff" />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Количество</label>
+                    <input class="form-control"
+                           type="number"
+                           @bind="_topN" />
+                </div>
+
+            </div>
+
+            <button class="btn btn-primary mt-3"
+                    @onclick="RunScreener"
+                    disabled="@_loading">
+
+                @if (_loading)
+                {
+                    <span>Сканирование...</span>
+                }
+                else
+                {
+                    <span>Запустить скрининг</span>
+                }
+            </button>
+
+        </div>
+    </div>
+
+    @if (_report != null)
+    {
+        <div class="row">
+
+            <!-- Недооценённые -->
+
+            <div class="col-lg-6">
+
+                <div class="card border-success mb-4">
+
+                    <div class="card-header">
+                        🟢 Недооценённые опционы
+                    </div>
+
+                    <div class="card-body">
+
+                        @foreach (var item in _report.Undervalued)
+                        {
+                            <div class="border rounded p-3 mb-3">
+
+                                <h5>
+                                    @item.Option.Ticker
+                                </h5>
+
+                                <div>
+                                    Тип:
+                                    @(item.Option.OptionType == "C" ? "CALL" : "PUT")
+                                </div>
+
+                                <div>
+                                    Рыночная цена:
+                                    @item.MarketPrice.ToString("N2")
+                                </div>
+
+                                <div>
+                                    Справедливая цена:
+                                    @item.FairPrice.ToString("N2")
+                                </div>
+
+                                <div class="text-success fw-bold">
+                                    +@item.DiffPercent.ToString("F1")%
+                                </div>
+
+                                <div class="small text-muted">
+                                    @item.Rationale
+                                </div>
+
+                                <button class="btn btn-outline-primary btn-sm mt-2">
+                                    Подробнее
+                                </button>
+
+                            </div>
+                        }
+
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Переоценённые -->
+
+            <div class="col-lg-6">
+
+                <div class="card border-danger">
+
+                    <div class="card-header">
+                        🔴 Переоценённые опционы
+                    </div>
+
+                    <div class="card-body">
+
+                        @foreach (var item in _report.Overvalued)
+                        {
+                            <div class="border rounded p-3 mb-3">
+
+                                <h5>
+                                    @item.Option.Ticker
+                                </h5>
+
+                                <div>
+                                    Тип:
+                                    @(item.Option.OptionType == "C" ? "CALL" : "PUT")
+                                </div>
+
+                                <div>
+                                    Рыночная цена:
+                                    @item.MarketPrice.ToString("N2")
+                                </div>
+
+                                <div>
+                                    Справедливая цена:
+                                    @item.FairPrice.ToString("N2")
+                                </div>
+
+                                <div class="text-danger fw-bold">
+                                    @item.DiffPercent.ToString("F1")%
+                                </div>
+
+                                <div class="small text-muted">
+                                    @item.Rationale
+                                </div>
+
+                                <button class="btn btn-outline-primary btn-sm mt-2">
+                                    Подробнее
+                                </button>
+
+                            </div>
+                        }
+
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    }
+</div>
+
+@code {
+
+    private bool _loading;
+
+    private double _alpha = 0.85;
+
+    private double _minDiff = 5;
+
+    private int _topN = 10;
+
+    private ScreenerReport? _report;
+
+    private async Task RunScreener()
+    {
+        _loading = true;
+
+        try
+        {
+            _report = await ScreenerService.RunAsync(
+                new ScreenerSettings
+                {
+                    Alpha = _alpha,
+                    MinDiffPercent = _minDiff,
+                    TopN = _topN
+                });
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

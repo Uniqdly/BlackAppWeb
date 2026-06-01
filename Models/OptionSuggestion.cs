@@ -1,37 +1,48 @@
 using System;
 
-namespace BlackScholesApp.Models;
-
-/// <summary>
-/// Элемент выпадающего списка — краткая информация об опционе
-/// </summary>
-public class OptionSuggestion
+namespace FractionalBlackScholes.Models
 {
-    public string Ticker      { get; set; } = string.Empty;
-    public string OptionType  { get; set; } = string.Empty; // CALL / PUT
-    public string Underlying  { get; set; } = string.Empty; // Si, RTS, GAZP...
-    public double Strike      { get; set; }
-    public DateTime? Expiry   { get; set; }
-    public string Description { get; set; } = string.Empty;
-
-    /// <summary>Отображается в заголовке строки списка</summary>
-    public string DisplayName => Ticker;
-
-    /// <summary>Подробная строка под тикером</summary>
-    public string SubText
+    /// <summary>
+    /// Подсказка для автодополнения при поиске тикера опциона.
+    /// Содержит дату экспирации для фильтрации истёкших инструментов.
+    /// </summary>
+    public class OptionSuggestion
     {
-        get
-        {
-            var parts = new System.Collections.Generic.List<string>();
-            if (!string.IsNullOrEmpty(OptionType))
-                parts.Add(OptionType == "CALL" ? "📈 CALL" : "📉 PUT");
-            if (!string.IsNullOrEmpty(Underlying))
-                parts.Add($"Базовый: {Underlying}");
-            if (Strike > 0)
-                parts.Add($"Страйк: {Strike:N0}");
-            if (Expiry.HasValue)
-                parts.Add($"Экспирация: {Expiry:dd.MM.yyyy}");
-            return parts.Count > 0 ? string.Join("  •  ", parts) : Description;
-        }
+        /// <summary>Тикер опциона.</summary>
+        public string Ticker { get; set; } = string.Empty;
+
+        /// <summary>Читаемое описание (страйк, экспирация, тип).</summary>
+        public string Description { get; set; } = string.Empty;
+
+        /// <summary>Тип: "C" или "P".</summary>
+        public string OptionType { get; set; } = "C";
+
+        /// <summary>
+        /// Дата экспирации опциона. Используется для фильтрации:
+        /// показываем только те опционы, у которых Expiration > текущая дата.
+        /// DateTime.MaxValue — если дата неизвестна (пропускаем фильтр).
+        /// </summary>
+        public DateTime Expiration { get; set; } = DateTime.MaxValue;
+
+        /// <summary>
+        /// true — срок опциона ещё не истёк относительно переданной даты.
+        /// </summary>
+        public bool IsActive(DateTime now) =>
+            Expiration == DateTime.MaxValue || Expiration.Date > now.Date;
+
+        /// <summary>Строка для отображения в выпадающем списке.</summary>
+        public string DisplayText => $"{Ticker} — {Description}";
+    }
+
+    /// <summary>
+    /// Элемент локального кэша данных об опционе.
+    /// </summary>
+    public class CachedOption
+    {
+        public string Key { get; set; } = string.Empty;
+        public OptionData Data { get; set; } = new();
+        public DateTime CachedAt { get; set; } = DateTime.Now;
+        public TimeSpan Ttl { get; set; } = TimeSpan.FromHours(24);
+        public bool IsValid => DateTime.Now - CachedAt < Ttl;
     }
 }

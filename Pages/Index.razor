@@ -1,0 +1,594 @@
+@page "/"
+@using FractionalBlackScholes.Models
+@using FractionalBlackScholes.Services
+@inject IOptionSearchService OptionService
+@inject ICacheService Cache
+@inject ILogger<Index> Logger
+
+<PageTitle>FBS — Дробная модель Блэка–Шоулза</PageTitle>
+
+<div class="page-wrapper">
+
+    <!-- ═══════════════════ ШАПКА ═══════════════════ -->
+    <header class="app-header">
+        <div class="header-inner">
+            <div class="logo-block">
+                <span class="logo-icon">∂</span>
+                <div>
+                    <h1 class="app-title">Fractional Black–Scholes</h1>
+                    <p class="app-subtitle">Дробная производная Римана–Лиувилля · MOEX ISS API · ASP.NET Core 8</p>
+                </div>
+            </div>
+            <div class="header-stats">
+                <div class="stat-chip">
+                    <span class="stat-label">Дата</span>
+                    <span class="stat-value">@(_networkDate == DateTime.MinValue ? "…" : _networkDate.ToString("dd.MM.yyyy"))</span>
+                </div>
+                <div class="stat-chip">
+                    <span class="stat-label">Кэш</span>
+                    <span class="stat-value">@Cache.Count записей</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-grid">
+
+        <!-- ═══════════════ ЛЕВАЯ КОЛОНКА ═══════════════ -->
+        <div class="col-left">
+
+            <!-- ── Карточка выбора опциона ── -->
+            <section class="card" id="card-search">
+                <div class="card-header">
+                    <span class="card-icon">🔍</span>
+                    <h2 class="card-title">Выбор опциона MOEX</h2>
+                </div>
+                <div class="card-body">
+                    <div class="input-group">
+                        <label class="field-label">Тикер опциона</label>
+                        <div class="search-wrap">
+                            <input class="field-input"
+                                   type="text"
+                                   placeholder="Например: RI65000BC5"
+                                   @bind="_tickerQuery"
+                                   @oninput="OnTickerInput"
+                                   @onkeydown="OnTickerKeyDown" />
+                            @if (_isSearching)
+                            {
+                                <span class="spinner-sm"></span>
+                            }
+                        </div>
+
+                        @if (_suggestions.Count > 0)
+                        {
+                            <div class="autocomplete-dropdown">
+                                @foreach (var s in _suggestions)
+                                {
+                                    <div class="autocomplete-item @(s == _selectedSuggestion ? "selected" : "")"
+                                         @onclick="() => SelectSuggestion(s)">
+                                        <span class="ac-ticker">@s.Ticker</span>
+                                        <span class="ac-badge @(s.OptionType == "C" ? "badge-call" : "badge-put")">
+                                            @(s.OptionType == "C" ? "CALL" : "PUT")
+                                        </span>
+                                        <span class="ac-desc">@s.Description</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="btn-row">
+                        <button class="btn btn-primary" @onclick="LoadOptionAsync" disabled="@_isLoading">
+                            @if (_isLoading)
+                            {
+                                <span class="spinner-sm"></span>
+                                <span>Загрузка…</span>
+                            }
+                            else
+                            {
+                                <span>↓ Загрузить</span>
+                            }
+                        </button>
+                        <button class="btn btn-secondary" @onclick="RefreshOptionAsync" disabled="@(_loadedOption == null || _isLoading)">
+                            ↺ Обновить
+                        </button>
+                        <button class="btn btn-ghost" @onclick="ClearCache">
+                            🗑 Кэш
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_statusMessage))
+                    {
+                        <div class="status-msg @(_isError ? "status-error" : "status-ok")">
+                            @_statusMessage
+                        </div>
+                    }
+                </div>
+            </section>
+
+            <!-- ── Карточка параметров загруженного опциона ── -->
+            @if (_loadedOption != null)
+            {
+                <section class="card card-loaded">
+                    <div class="card-header">
+                        <span class="card-icon">📋</span>
+                        <h2 class="card-title">@_loadedOption.Ticker</h2>
+                        <span class="badge @(_loadedOption.OptionType == "C" ? "badge-call" : "badge-put")">
+                            @(_loadedOption.OptionType == "C" ? "CALL" : "PUT")
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        <div class="params-grid">
+                            <div class="param-item">
+                                <span class="param-label">Базовый актив</span>
+                                <span class="param-value">@_loadedOption.Underlying</span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-label">Страйк</span>
+                                <span class="param-value mono">@_loadedOption.Strike.ToString("N0")</span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-label">Экспирация</span>
+                                <span class="param-value">@_loadedOption.Expiration.ToString("dd.MM.yyyy")</span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-label">До экспирации</span>
+                                <span class="param-value mono">@_loadedOption.TimeToExpiry.ToString("F4") лет</span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-label">Цена актива</span>
+                                <span class="param-value mono">
+                                    @(_loadedOption.UnderlyingPrice > 0 ? _loadedOption.UnderlyingPrice.ToString("N2") : "—")
+                                </span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-label">Волатильность</span>
+                                <span class="param-value mono">
+                                    @((_loadedOption.ImpliedVolatility * 100).ToString("F1"))%
+                                    <span class="param-source">(@_loadedOption.VolatilitySource)</span>
+                                </span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-label">Рыночная цена</span>
+                                <span class="param-value mono market-price">
+                                    @(_loadedOption.MarketPrice > 0 ? _loadedOption.MarketPrice.ToString("N2") : "—")
+                                </span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-label">Ставка ЦБ</span>
+                                <span class="param-value mono">@((_loadedOption.RiskFreeRate * 100).ToString("F1"))%</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline btn-sm mt-2" @onclick="FillFromLoaded">
+                            ← Заполнить форму расчёта
+                        </button>
+                    </div>
+                </section>
+            }
+
+        </div><!-- /col-left -->
+
+        <!-- ═══════════════ ПРАВАЯ КОЛОНКА ═══════════════ -->
+        <div class="col-right">
+
+            <!-- ── Ручной ввод параметров ── -->
+            <section class="card">
+                <div class="card-header">
+                    <span class="card-icon">✏️</span>
+                    <h2 class="card-title">Параметры расчёта</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label class="field-label">
+                                <span class="math-symbol">S</span> — Цена актива
+                            </label>
+                            <input class="field-input" type="number" step="0.01" min="0.01"
+                                   @bind="_paramS" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">
+                                <span class="math-symbol">K</span> — Страйк
+                            </label>
+                            <input class="field-input" type="number" step="0.01" min="0.01"
+                                   @bind="_paramK" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">
+                                <span class="math-symbol">T</span> — Время (лет)
+                            </label>
+                            <input class="field-input" type="number" step="0.001" min="0.001" max="10"
+                                   @bind="_paramT" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">
+                                <span class="math-symbol">σ</span> — Волатильность
+                            </label>
+                            <div class="input-with-hint">
+                                <input class="field-input" type="number" step="0.01" min="0.001" max="5"
+                                       @bind="_paramSigma" />
+                                <span class="input-hint">@((_paramSigma * 100).ToString("F1"))%</span>
+                            </div>
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">
+                                <span class="math-symbol">r</span> — Ставка (год.)
+                            </label>
+                            <div class="input-with-hint">
+                                <input class="field-input" type="number" step="0.001" min="0" max="1"
+                                       @bind="_paramR" />
+                                <span class="input-hint">@((_paramR * 100).ToString("F1"))%</span>
+                            </div>
+                        </div>
+                        <div class="form-field alpha-field">
+                            <label class="field-label">
+                                <span class="math-symbol">α</span> — Порядок производной Римана–Лиувилля
+                                <span class="alpha-range">(0 &lt; α ≤ 1)</span>
+                            </label>
+                            <input class="field-input"
+                                   type="number"
+                                   min="0.01"
+                                   max="1.0"
+                                   step="0.01"
+                                   @bind="_paramAlpha"
+                                   @bind:event="oninput" />
+                            <div class="alpha-display">
+                                <span class="alpha-hint">@GetAlphaHint()</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Тип опциона -->
+                    <div class="option-type-group">
+                        <label class="field-label">Тип опциона</label>
+                        <div class="type-toggle">
+                            <button class="type-btn @(_optionType == "C" ? "active" : "")"
+                                    @onclick='() => _optionType = "C"'>
+                                CALL
+                            </button>
+                            <button class="type-btn @(_optionType == "P" ? "active put-active" : "")"
+                                    @onclick='() => _optionType = "P"'>
+                                PUT
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Рыночная цена для сравнения -->
+                    <div class="form-field">
+                        <label class="field-label">Рыночная цена (для сравнения)</label>
+                        <input class="field-input" type="number" step="0.01" min="0"
+                               placeholder="0 — если неизвестна"
+                               @bind="_paramMarketPrice" />
+                    </div>
+
+                    <button class="btn btn-calculate" @onclick="CalculateAsync" disabled="@_isCalculating">
+                        @if (_isCalculating)
+                        {
+                            <span class="spinner-sm white"></span>
+                            <span>Вычисление…</span>
+                        }
+                        else
+                        {
+                            <span>∂ Рассчитать</span>
+                        }
+                    </button>
+                </div>
+            </section>
+
+            <!-- ── Результаты ── -->
+            @if (_result != null)
+            {
+                <section class="card card-results">
+                    <div class="card-header">
+                        <span class="card-icon">📊</span>
+                        <h2 class="card-title">Результаты расчёта</h2>
+                        <span class="result-time">@_result.CalculatedAt.ToString("HH:mm:ss")</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="results-grid">
+                            <div class="result-block fair-price-block">
+                                <div class="result-label">Справедливая цена (дробная модель)</div>
+                                <div class="result-value fair-price">
+                                    @_result.FairPrice.ToString("N4")
+                                </div>
+                                <div class="result-meta">α = @_result.Alpha.ToString("F2") · @(_result.OptionType == "C" ? "CALL" : "PUT")</div>
+                            </div>
+
+                            @if (_result.MarketPrice > 0)
+                            {
+                                <div class="result-block market-price-block">
+                                    <div class="result-label">Рыночная цена</div>
+                                    <div class="result-value market-price-val">
+                                        @_result.MarketPrice.ToString("N4")
+                                    </div>
+                                </div>
+
+                                <div class="result-block diff-block @(Math.Abs(_result.DifferencePercent) < 5 ? "diff-neutral" : _result.IsOverpriced ? "diff-over" : "diff-under")">
+                                    <div class="result-label">Отклонение</div>
+                                    <div class="result-value diff-value">
+                                        @(_result.Difference >= 0 ? "+" : "")@_result.Difference.ToString("N4")
+                                    </div>
+                                    <div class="result-meta">
+                                        @(_result.DifferencePercent >= 0 ? "+" : "")@_result.DifferencePercent.ToString("F2")%
+                                        · @(_result.IsOverpriced ? "модель переоценивает" : "модель недооценивает")
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </section>
+            }
+
+            <!-- Плейсхолдер результатов -->
+            @if (_result == null && !_isCalculating)
+            {
+                <section class="card card-placeholder">
+                    <div class="placeholder-inner">
+                        <div class="placeholder-icon">∂</div>
+                        <p>Введите параметры и нажмите «Рассчитать»</p>
+                        <p class="placeholder-hint">или загрузите опцион с MOEX</p>
+                    </div>
+                </section>
+            }
+
+        </div><!-- /col-right -->
+    </main>
+
+    <footer class="app-footer">
+        <div class="footer-inner">
+            <span>Fractional Black–Scholes · ASP.NET Core 8 · Blazor Server</span>
+            <span>Производная Римана–Лиувилля порядка α</span>
+            <span>MOEX ISS API</span>
+        </div>
+    </footer>
+</div><!-- /page-wrapper -->
+
+@code {
+    // ─── Состояние поиска ────────────────────────────────────────────────────
+    private string _tickerQuery = "";
+    private List<OptionSuggestion> _suggestions = new();
+    private OptionSuggestion? _selectedSuggestion;
+    private OptionData? _loadedOption;
+    private bool _isSearching = false;
+    private bool _isLoading   = false;
+    private string _statusMessage = "";
+    private bool _isError = false;
+
+    // ─── Текущая дата из сети ────────────────────────────────────────────────
+    private DateTime _networkDate = DateTime.MinValue;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _networkDate = await OptionService.GetNetworkDateAsync(_cts.Token);
+        }
+        catch
+        {
+            _networkDate = DateTime.Now;
+        }
+    }
+
+    // ─── Параметры расчёта ───────────────────────────────────────────────────
+    private double _paramS           = 64850;
+    private double _paramK           = 65000;
+    private double _paramT           = 0.25;
+    private double _paramSigma       = 0.28;
+    private double _paramR           = 0.16;
+    private double _paramAlpha       = 1.0;
+    private double _paramMarketPrice = 0;
+    private string _optionType       = "C";
+
+    // ─── Результаты ──────────────────────────────────────────────────────────
+    private PricingResult? _result;
+    private bool _isCalculating = false;
+
+    // ─── CancellationToken ───────────────────────────────────────────────────
+    private CancellationTokenSource _cts = new();
+
+    // ─── Поиск с автодополнением ─────────────────────────────────────────────
+    private System.Timers.Timer? _debounceTimer;
+
+    private void OnTickerInput(ChangeEventArgs e)
+    {
+        _tickerQuery = e.Value?.ToString() ?? "";
+        _debounceTimer?.Stop();
+        _debounceTimer?.Dispose();
+        _debounceTimer = new System.Timers.Timer(350);
+        _debounceTimer.Elapsed += async (_, _) =>
+        {
+            _debounceTimer?.Dispose();
+            await InvokeAsync(DoSearchAsync);
+        };
+        _debounceTimer.AutoReset = false;
+        _debounceTimer.Start();
+    }
+
+    private async Task DoSearchAsync()
+    {
+        if (_tickerQuery.Length < 2)
+        {
+            _suggestions.Clear();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _isSearching = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            _suggestions = await OptionService.SearchAsync(_tickerQuery, _cts.Token);
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            _isSearching = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnTickerKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _suggestions.Count > 0)
+            _ = SelectSuggestionAndLoad(_suggestions[0]);
+        if (e.Key == "Escape")
+            _suggestions.Clear();
+    }
+
+    private void SelectSuggestion(OptionSuggestion s)
+    {
+        _tickerQuery = s.Ticker;
+        _optionType  = s.OptionType;
+        _selectedSuggestion = s;
+        _suggestions.Clear();
+    }
+
+    private Task SelectSuggestionAndLoad(OptionSuggestion s)
+    {
+        SelectSuggestion(s);
+        return LoadOptionAsync();
+    }
+
+    // ─── Загрузка опциона ────────────────────────────────────────────────────
+    private async Task LoadOptionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_tickerQuery)) return;
+
+        _isLoading = true;
+        _statusMessage = "";
+        _suggestions.Clear();
+        StateHasChanged();
+
+        try
+        {
+            _loadedOption = await OptionService.LoadOptionAsync(_tickerQuery.ToUpperInvariant(), false, _cts.Token);
+
+            if (_loadedOption != null)
+            {
+                SetStatus($"✓ Опцион {_loadedOption.Ticker} загружен", false);
+                FillFromLoaded();
+            }
+            else
+            {
+                SetStatus("Опцион не найден", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Ошибка: {ex.Message}", true);
+            Logger.LogError(ex, "Ошибка загрузки опциона");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshOptionAsync()
+    {
+        if (_loadedOption == null) return;
+        _tickerQuery = _loadedOption.Ticker;
+
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _loadedOption = await OptionService.LoadOptionAsync(_loadedOption.Ticker, true, _cts.Token);
+            SetStatus($"✓ Данные обновлены", false);
+            FillFromLoaded();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearCache()
+    {
+        Cache.Clear();
+        SetStatus("🗑 Кэш очищен", false);
+        StateHasChanged();
+    }
+
+    private void FillFromLoaded()
+    {
+        if (_loadedOption == null) return;
+        _paramS           = _loadedOption.UnderlyingPrice > 0 ? _loadedOption.UnderlyingPrice : _loadedOption.Strike;
+        _paramK           = _loadedOption.Strike;
+        _paramT           = Math.Round(_loadedOption.TimeToExpiry, 4);
+        _paramSigma       = _loadedOption.ImpliedVolatility > 0 ? _loadedOption.ImpliedVolatility : 0.25;
+        _paramR           = _loadedOption.RiskFreeRate;
+        _paramMarketPrice = _loadedOption.MarketPrice;
+        _optionType       = _loadedOption.OptionType;
+    }
+
+    // ─── Расчёт ──────────────────────────────────────────────────────────────
+    private async Task CalculateAsync()
+    {
+        _isCalculating = true;
+        _result = null;
+        StateHasChanged();
+
+        // Задержка для отображения спиннера
+        await Task.Delay(50);
+
+        try
+        {
+            _result = OptionService.CalculateManual(
+                S:           _paramS,
+                K:           _paramK,
+                T:           _paramT,
+                sigma:       _paramSigma,
+                r:           _paramR,
+                alpha:       _paramAlpha,
+                optionType:  _optionType,
+                marketPrice: _paramMarketPrice);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Ошибка расчёта: {ex.Message}", true);
+            Logger.LogError(ex, "Ошибка при расчёте");
+        }
+        finally
+        {
+            _isCalculating = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnAlphaInput(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out double v))
+        {
+            _paramAlpha = v;
+        }
+    }
+
+    // ─── Вспомогательные ─────────────────────────────────────────────────────
+    private void SetStatus(string msg, bool isError)
+    {
+        _statusMessage = msg;
+        _isError       = isError;
+    }
+
+    private string GetAlphaHint() => _paramAlpha switch
+    {
+        >= 0.99 => "Классическая модель Блэка–Шоулза",
+        >= 0.8  => "Слабая аномальная диффузия",
+        >= 0.6  => "Умеренная дробная динамика",
+        >= 0.4  => "Сильная субдиффузия",
+        _       => "Экстремальная дробная модель"
+    };
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _debounceTimer?.Dispose();
+    }
+}

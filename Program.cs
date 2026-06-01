@@ -1,59 +1,52 @@
-using MyBlazorApp.Components;
-using BlackScholesApp.Services;
-using BlackScholesApp.ViewModels;
-using Serilog;
-using System.IO;
+using FractionalBlackScholes.Models;
+using FractionalBlackScholes.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Инициализация и регистрация Serilog для DI-контейнера
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
-    .WriteTo.File("Logs/BlackScholesApp_.log", rollingInterval: RollingInterval.Day)
-    .CreateLogger();
+// ─── Razor / Blazor ───────────────────────────────────────────────────────────
+builder.Services.AddRazorPages();
+builder.Services.AddServerSideBlazor();
 
-builder.Services.AddSingleton<Serilog.ILogger>(Log.Logger);
 
-// 2. Регистрация HttpClient для работы MoexApiService и OptionSearchService
-builder.Services.AddHttpClient();
-
-// Add services to the container.
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
-
-// 3. Регистрация внутренних сервисов
-// Собираем LoggingService вручную, так как ему нужен путь к логам в конструктор
-builder.Services.AddSingleton<LoggingService>(provider => 
+// ─── HttpClient для MOEX API ──────────────────────────────────────────────────
+builder.Services.AddHttpClient("moex", client =>
 {
-    string logsPath = Path.Combine(AppContext.BaseDirectory, "Logs");
-    return new LoggingService(logsPath);
+    client.BaseAddress = new Uri("https://iss.moex.com/");
+    client.Timeout     = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("Accept", "application/json");
+    client.DefaultRequestHeaders.Add("User-Agent", "FractionalBS/1.0");
 });
 
-builder.Services.AddSingleton<CacheService>();
-builder.Services.AddScoped<MoexApiService>();
-builder.Services.AddScoped<OptionSearchService>();
-
-// Регистрируем интерфейс поиска для TickerSearchViewModel, если он используется
+// ─── Сервисы бизнес-логики ────────────────────────────────────────────────────
+builder.Services.AddSingleton<ICacheService,    CacheService>();
+builder.Services.AddScoped<IMoexApiService,     MoexApiService>();
 builder.Services.AddScoped<IOptionSearchService, OptionSearchService>();
 
-// 4. Регистрация ViewModels 
-builder.Services.AddScoped<MainViewModel>();
-builder.Services.AddScoped<TickerSearchViewModel>();
+// Вычислительный движок — не зависит от UI и DI-контейнера
+// Регистрируем как Transient чтобы движок был stateless
+builder.Services.AddTransient<FractionalBlackScholesEngine>();
 
+// ─── Логирование ──────────────────────────────────────────────────────────────
+builder.Services.AddLogging(logging =>
+{
+    logging.AddConsole();
+    logging.SetMinimumLevel(LogLevel.Information);
+});
+
+// ─── Сборка приложения ────────────────────────────────────────────────────────
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-app.UseAntiforgery();
+app.UseRouting();
 
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+app.MapBlazorHub();
+app.MapFallbackToPage("/_Host");
 
 app.Run();
